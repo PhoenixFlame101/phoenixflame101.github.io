@@ -1,0 +1,53 @@
+<!doctype html><html lang=en><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content><title>PandaFS: Distributed File System in Go | Abhinav Chennubhotla</title><link rel=stylesheet href=/css/reset.css><link rel=stylesheet href=/css/font.css><link rel=stylesheet href=/css/smigle.css><link rel=apple-touch-icon sizes=180x180 href=/apple-touch-icon.png><link rel=icon type=image/png sizes=32x32 href=/favicon-32x32.png><link rel=icon type=image/png sizes=16x16 href=/favicon-16x16.png><link rel=manifest href=/site.webmanifest><link rel=mask-icon href=/safari-pinned-tab.svg color=#5bbad5><meta name=msapplication-TileColor content="#da532c"><meta name=theme-color content="#ffffff"></head><body><div id=root><header><div id=brand><a class=icon-link href=https://www.chennubhotla.com/><img class=icon src=/images/icon.png></a><div class=text><a href=https://www.chennubhotla.com/><h1>Abhinav Chennubhotla</h1></a><h3></h3></div></div><nav><a href=/><b>Home</b></a>
+|
+<a href=/about/><b>About</b></a>
+|
+<a href=/projects/><b>Projects</b></a>
+|
+<a href=/posts/><b>Posts</b></a>
+|
+<a href=/tags/><b>Tags</b></a></nav><hr></header><div id=content><main><article><h1 class=title>PandaFS: Distributed File System in Go</h1><div class=post-meta><strong><span>Posted on</span>
+<time>2023-11-21</time>
+</strong><span>• 777 words</span>
+<span>• 4 minute read</span><div><span>Tags:</span>
+<a href=/tags/distributed-systems>distributed-systems</a>,
+<a href=/tags/projects>projects</a></div></div><div class=content><h5 id=check-out-the-project-on-><em>Check out the project on <a href=https://github.com/PhoenixFlame101/pandafs/>GitHub</a></em>!</h5><p>Distributed systems are all about pessimism and paranoia. What if my hard disk gets fried? What if
+my computer explodes? What if a million people all request for the same file and my website breaks
+for 2 minutes?</p><p>While these scenarios may sound a little far-fetched, these are very real concerns for enterprises
+serving thousands or even millions of customers around the clock. Downtime causes a huge loss of
+revenue, and data loss is catastrophic to say the least.</p><p>Creating a robust and efficient file system is a significant challenge when you want it to survive
+the apocalypse. This blog chronicles the development of a distributed file system in Go, which I
+(not so) lovingly call PandaFS.</p><h2 id=so-what-is-a-dfs-anyway>So what is a DFS anyway?</h2><p>A regular file system is simple enough - your computer has storage (hard disk platters or NAND
+flash chips) that physically stores data, and you have bundles of bytes (files) that you want to
+store. A file system not only handles the space management part, but also allows you to store your
+files under directories so you have some form of structure to help keep you sane.</p><p>A distributed file system is the same thing, but instead of just being restricted to a single disk
+or multiple disks on the same computer, we store files across multiple computers, all part of a
+network (usually the internet). These computers are called <em>nodes</em> and together they&rsquo;re called a
+<em>cluster</em>.</p><p>This allows us to <em>replicate</em> our files (or fixed-size blocks of our file) across multiple nodes and
+create a <em>fault-tolerant</em> system. If some nodes go down, we just fetch the other replicas stored
+on other nodes instead. This makes the system highly available, and scalable. We can simply make the
+system move effective and have higher storage if we add more nodes to the cluster.</p><h2 id=how-do-i-build-one>How do I build one?</h2><p>There&rsquo;s a couple major components of a DFS, depending on the complexity of what you&rsquo;re implementing.
+PandaFS rips off directly from HDFS, but with less features because I have a skill issue.</p><p>First off, you obviously have the nodes themselves, these are of two types: The namenodes (called
+masters in PandaFS), and the datanodes (called mules in PandaFS). The mules actually store the bytes
+that the user really cares about in the form of blocks, and the masters store data about the data,
+like the name, size, and filepath.</p><p>For the sake of simplicity, we don&rsquo;t handle master node failure at all, and assume the mules are the
+only ones that fail. The way this is handled in HDFS is there&rsquo;s redundant namenodes that is used in
+tandem with the &lsquo;primary&rsquo; one, so when it fails, the other ones pick up the slack. Unless it was
+pre-Hadoop 2, which just went belly-up on namenode failures. So look forward to master redundancy in
+PandaFS 2 I guess.</p><p>We do account for mule failures though, simply because there are a lot more of them. Each mule
+contains blocks of a fixed size - 128 MiB. This is to account for files that are straight up too big
+for a single machine or disk (a very real concern when dealing with Big Data). Each block is copied
+to <em>n</em> different nodes - where <em>n</em> is the <em>replication factor</em>, 3 by default. This allows us to
+access files even when a node (or 2) storing the file crash.</p><p>How do we know when a mule crashes? We use our stethoscope, of course (it&rsquo;s a heartbeat sensor)! The
+stethoscope is a process running on the master that periodically receives <em>heartbeat messages</em> from
+the mules, letting it know that they are still working fine. If the master doesn&rsquo;t receive the
+message within a certain interval, it assume the mule crashed, and the system works without it.</p><p>This entire replication and splitting-into-blocks process is abstracted away from the user, who only
+sees a single cohesive file system, thanks to the master&rsquo;s metadata representation.</p><p>Speaking of the user, they also need a way to interact with the FS. This is done through a CLI
+client that supports standard metadata commands like <code>touch</code>, <code>rm</code>, <code>mv</code>, <code>cp</code>, and <code>mkdir</code>.</p><p>Let&rsquo;s talk about actually building this thing.</p><h2 id=step-1-set-up-a-cluster>Step 1: Set up a cluster</h2><p>Before actually dealing with any data, we&rsquo;re going to set up a cluster of a single master and 3
+mules (which is the same as the replication factor). Each &rsquo;node&rsquo; is simply an instance of our go
+program running in a terminal.</p><p>The master node needs to have the ability to process the heartbeat messages coming from the mules
+(with its stethoscope) and print out which ones are running</p></div></article></main></div><footer><hr><p id=social><a href=mailto:abhinav@chennubhotla.com>Email</a>
+|
+<a href=https://github.com/PhoenixFlame101>GitHub</a>
+|
+<a href=https://www.linkedin.com/in/abhinavchennubhotla/>Linkedin</a></p><p class=copyright>Made by <a href=https://www.chennubhotla.com/><strong>Abhinav Chennubhotla</strong></a> &ltabhinav@chennubhotla.com&gt</p></footer></div></body></html>
